@@ -14,7 +14,7 @@ const version {.strdefine.}: string = "(no version information)"
 const doc = ("""
 AccountServer provides HTTP server to manage accounts
 
-Usage: newsweb [options]
+Usage: accountserver [options]
 
 Options:
   -h, --help                Print help
