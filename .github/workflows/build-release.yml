@@ -51,7 +51,7 @@ jobs:
     - name: Build
       run: |
         nimble install -d -y
-        nim c -d:ssl -d:version=$(git describe --always) src/accountserver
+        nimble c -d:ssl -d:version=$(git describe --always) src/accountserver
 
     - name: package
       run: |
