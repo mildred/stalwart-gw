@@ -1,10 +1,8 @@
-import nre, strutils, strformat
+import strutils, strformat
 import asyncdispatch, net
 import docopt, options
 import zfblast
-import cgi
 import tables
-import asynctools/asyncsync
 import ./utils/parse_port
 import ./db/common
 import ./db/migrations
@@ -71,22 +69,33 @@ proc main(args: Table[string, Value]) =
   proc admin_handler(req: HttpContext) {.async gcsafe.} =
     echo "Not Implemented"
 
-  proc api_handler(req: HttpContext) {.async gcsafe.} =
-    let params = req.request.body.read_file().decode_data()
-    let userid = params["userid"][0]
-    let realm = params["realm"][0]
-    let req: string = params["req"][0]
+  proc api_handler(ctx: HttpContext) {.async gcsafe.} =
+    let params = ctx.request.body.read_file().decode_data()
+    let userid = params.get_param("userid")
+    let realm = params.get_param("realm")
+    let req = params.get_param("req")
     echo params
     if req == "lookup":
-      let req_params = params["param"]
+      let req_params = params.get_params("param")
       echo &"Lookup userid={userid} realm={realm} params={req_params}"
-      discard
+      ctx.response.httpCode = Http200
+      ctx.response.body = {
+        "res": "ok",
+        "param.foo": "bar"
+      }.encode_params
     elif req == "store":
       echo "Store"
-      discard
+      ctx.response.httpCode = Http500
+      ctx.response.body = {
+        "res": "error",
+      }.encode_params
     else:
       echo "Not Acceptable"
-      discard
+      ctx.response.httpCode = Http400
+      ctx.response.body = {
+        "res": "error",
+      }.encode_params
+    await ctx.resp
 
   asyncCheck api_server.doServe(api_handler)
   asyncCheck admin_server.doServe(admin_handler)
