@@ -1,12 +1,17 @@
+import options
 import strutils, strformat
 import asyncdispatch, net
-import docopt, options
+import docopt
 import zfblast
 import tables
 import ./utils/parse_port
-import ./db/common
+import ./db/dbcommon
 import ./db/migrations
+import ./db/users
 import ./httputil
+import ./admin_routes
+import ./session
+import ./common
 
 const version {.strdefine.}: string = "(no version information)"
 
@@ -43,19 +48,18 @@ if args["--version"]:
   else:
     quit(1)
 
-proc process_db(): bool =
-  result = true
+proc main(args: Table[string, Value]) =
   echo &"Opening database {arg_db}"
   var db: DbConn = connect(arg_db)
   defer: db.close()
+
   if not migrate(db):
     echo "Invalid database"
-    result = false
     quit(1)
 
-proc main(args: Table[string, Value]) =
   let
-    arg_log  = args["--verbose"]
+    sessions = newSessionList(defaultSessionTimeout)
+    arg_log = args["--verbose"]
     api_server = newZFBlast(
       trace = arg_log,
       port = parse_port($args["--port"], def = 8080),
@@ -64,33 +68,38 @@ proc main(args: Table[string, Value]) =
       trace = arg_log,
       port = parse_port($args["--admin-port"], def = 8080),
       address = $args["--admin-addr"])
+    common = Common(
+      sessions: sessions,
+      db: db)
 
-
-  proc admin_handler(req: HttpContext) {.async gcsafe.} =
-    echo "Not Implemented"
+  proc admin_handler(ctx: HttpContext) {.async gcsafe.} =
+    await admin_routes.handler(ctx, common)
 
   proc api_handler(ctx: HttpContext) {.async gcsafe.} =
     let params = ctx.request.body.read_file().decode_data()
     let userid = params.get_param("userid")
     let realm = params.get_param("realm")
     let req = params.get_param("req")
-    echo params
     if req == "lookup":
       let req_params = params.get_params("param")
       echo &"Lookup userid={userid} realm={realm} params={req_params}"
+      let values = db.fetch_user_params(userid, realm, req_params)
+      var res: seq[(string,string)] = @[]
+      if values.is_none:
+        res.add(("res", "none"))
+      else:
+        res.add(("res", "ok"))
+        for k, v in values.get:
+          res.add( (&"param.{k}", v) )
       ctx.response.httpCode = Http200
-      ctx.response.body = {
-        "res": "ok",
-        "param.foo": "bar"
-      }.encode_params
+      ctx.response.body = res.encode_params
     elif req == "store":
-      echo "Store"
+      echo &"Store userid={userid} realm={realm}"
       ctx.response.httpCode = Http500
       ctx.response.body = {
         "res": "error",
       }.encode_params
     else:
-      echo "Not Acceptable"
       ctx.response.httpCode = Http400
       ctx.response.body = {
         "res": "error",
@@ -102,6 +111,5 @@ proc main(args: Table[string, Value]) =
 
   runForever()
 
-if process_db():
-  main(args)
+main(args)
 

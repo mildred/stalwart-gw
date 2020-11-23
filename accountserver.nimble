@@ -15,3 +15,6 @@ requires "nim >= 1.4.0"
 requires "docopt"
 requires "zfblast#head"
 requires "https://github.com/mildred/asynctools"
+requires "templates"
+requires "npeg#head"
+

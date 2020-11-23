@@ -16,14 +16,26 @@ proc migrate*(db: DbConn): bool =
       description = "database initialized"
       db.exec(sql"""
         CREATE TABLE IF NOT EXISTS users (
-          id          INTEGER PRIMARY KEY NOT NULL,
-          local_part  TEXT NOT NULL,
-          domain      TEXT NOT NULL,
-          admin       BOOLEAN NOT NULL DEFAULT FALSE,
-          created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+          id           INTEGER PRIMARY KEY NOT NULL,
+          local_part   TEXT NOT NULL,
+          domain       TEXT NOT NULL,
+          super_admin  BOOLEAN NOT NULL DEFAULT FALSE,
+          domain_admin BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
       """)
       user_version = 1
+    of 1:
+      description = "added user parameters"
+      db.exec(sql"""
+        CREATE TABLE IF NOT EXISTS user_params (
+          id           INTEGER PRIMARY KEY NOT NULL,
+          user_id      INTEGER NOT NULL,
+          name         TEXT NOT NULL,
+          value        TEXT NOT NULL
+        )
+      """)
+      user_version = 2
     else:
       migrating = false
     if migrating:
