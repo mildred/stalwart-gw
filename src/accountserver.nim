@@ -107,7 +107,7 @@ proc main(args: Table[string, Value]) =
         if arg_log and not arg_ilog: echo &"Respond with: res=ok"
         for k, v in values.get:
           res.add( (&"param.{k}", v) )
-        for param in req_params:
+        for param in raw_req_params:
           if param == "cmusaslsecretPLAIN":
             res.add( ("param.cmusaslsecretPLAIN", values.get["userPassword"]) )
       ctx.response.httpCode = Http200
