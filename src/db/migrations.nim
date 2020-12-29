@@ -21,7 +21,8 @@ proc migrate*(db: DbConn): bool =
           domain       TEXT NOT NULL,
           super_admin  BOOLEAN NOT NULL DEFAULT FALSE,
           domain_admin BOOLEAN NOT NULL DEFAULT FALSE,
-          created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+          created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT user_unique UNIQUE (local_part, domain)
         )
       """)
       user_version = 1
@@ -32,7 +33,8 @@ proc migrate*(db: DbConn): bool =
           id           INTEGER PRIMARY KEY NOT NULL,
           user_id      INTEGER NOT NULL,
           name         TEXT NOT NULL,
-          value        TEXT NOT NULL
+          value        TEXT NOT NULL,
+          CONSTRAINT param_unique UNIQUE (user_id, name)
         )
       """)
       user_version = 2

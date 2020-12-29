@@ -1,8 +1,9 @@
 import times
 import ./httputil/sessions
+import ./db/users
 
 type SessionData* = object
- discard
+  email*: Email
 
 type SessionList* = sessions.SessionList[SessionData]
 type Session* = sessions.Session[SessionData]

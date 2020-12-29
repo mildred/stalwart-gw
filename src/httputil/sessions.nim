@@ -31,7 +31,7 @@ func newSessionList*[T](timeout: Duration, close: proc(session: Session[T]) {.cl
 
 proc cleanupSessions[T](list: SessionList[T]) =
   let now = getMonoTime()
-  for sid, sess in list.list:
+  for sid, sess in list.list.pairs():
     if sess.atime < now - list.timeout:
       list.close(sess)
       list.list.del(sid)

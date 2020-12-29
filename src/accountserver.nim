@@ -49,6 +49,7 @@ if args["--version"]:
     quit(1)
 
 proc main(args: Table[string, Value]) =
+  echo &"Starting up accountserver version {version}..."
   echo &"Opening database {arg_db}"
   var db: DbConn = connect(arg_db)
   defer: db.close()
@@ -71,6 +72,9 @@ proc main(args: Table[string, Value]) =
     common = Common(
       sessions: sessions,
       db: db)
+
+  echo &"Listening API on {api_server.address} port {api_server.port}"
+  echo &"Listening admin on {admin_server.address} port {admin_server.port}"
 
   proc admin_handler(ctx: HttpContext) {.async gcsafe.} =
     await admin_routes.handler(ctx, common)
