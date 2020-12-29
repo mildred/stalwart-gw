@@ -30,7 +30,7 @@ proc admin_users*(ctx: HttpContext, com: CommonRequest) {.async gcsafe.} =
                        domain_admin = domain_admin,
                        auto_admin = false)
     ctx.response.httpCode = Http303
-    ctx.response.headers.add("Location", &"{com.prefix}/users/{$email}")
+    ctx.response.headers.add("Location", &"{com.prefix}/users/{$email.get}")
 
   ctx.response.body = com.layout_signed(
     title = "Users",
