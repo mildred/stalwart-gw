@@ -77,10 +77,10 @@ proc update_user_password*(db: DbConn, email: Email, password: string) {.gcsafe.
   db.exec(sql"""
     UPDATE  user_params
     SET     value = ?
-    FROM    users
-    WHERE   users.id = user_params.user_id AND
-            user_params.name = 'userPassword' AND
-            users.local_part = ? AND users.domain = ?
+    WHERE   name = 'userPassword' AND
+            user_id IN (
+              SELECT id FROM USERS
+              WHERE local_part = ? AND domain = ?)
   """, password, email.local_part, email.domain)
 
 proc is_admin*(db: DbConn, email: Email, domain: string = ""): bool {.gcsafe.} =
