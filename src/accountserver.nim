@@ -91,7 +91,7 @@ proc main(args: Table[string, Value]) =
     if req == "lookup":
       let raw_req_params = params.get_params("param")
       var req_params: seq[string]
-      echo &"Lookup userid={userid} realm={realm} params={req_params}"
+      echo &"Lookup userid={userid} realm={realm} params={raw_req_params}"
       for param in raw_req_params:
         if param == "cmusaslsecretPLAIN":
           req_params.add("userPassword")
