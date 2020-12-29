@@ -80,6 +80,8 @@ proc main(args: Table[string, Value]) =
     await admin_routes.handler(ctx, common)
 
   proc api_handler(ctx: HttpContext) {.async gcsafe.} =
+    defer:
+      await ctx.resp
     let params = ctx.request.body.read_file().decode_data()
     let userid = params.get_param("userid")
     let realm = params.get_param("realm")
@@ -97,18 +99,20 @@ proc main(args: Table[string, Value]) =
           res.add( (&"param.{k}", v) )
       ctx.response.httpCode = Http200
       ctx.response.body = res.encode_params
+      echo &"Respond with: {ctx.response.body}"
     elif req == "store":
       echo &"Store userid={userid} realm={realm}"
+      echo &"Respond error"
       ctx.response.httpCode = Http500
       ctx.response.body = {
         "res": "error",
       }.encode_params
     else:
+      echo &"Unknown request {req}"
       ctx.response.httpCode = Http400
       ctx.response.body = {
         "res": "error",
       }.encode_params
-    await ctx.resp
 
   asyncCheck api_server.doServe(api_handler)
   asyncCheck admin_server.doServe(admin_handler)
