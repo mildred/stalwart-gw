@@ -29,6 +29,7 @@ Options:
   -P, --admin-port <port>   Admin interface port [default: 8080]
   -A, --admin-addr <addr>   Admin interface bind address [default: 127.0.0.1]
   -v, --verbose             Be verbose
+  --insecure-logs           Log with user param values (passwords included)
 
 Note: systemd socket activation is not supported yet
 """) & (when not defined(version): "" else: &"""
@@ -61,6 +62,7 @@ proc main(args: Table[string, Value]) =
   let
     sessions = newSessionList(defaultSessionTimeout)
     arg_log = args["--verbose"]
+    arg_ilog = args["--insecure-logs"]
     api_server = newZFBlast(
       trace = arg_log,
       port = parse_port($args["--port"], def = 8080),
@@ -87,19 +89,27 @@ proc main(args: Table[string, Value]) =
     let realm = params.get_param("realm")
     let req = params.get_param("req")
     if req == "lookup":
-      let req_params = params.get_params("param")
+      var req_params = params.get_params("param")
       echo &"Lookup userid={userid} realm={realm} params={req_params}"
+      for param in req_params:
+        if param == "cmusaslsecretPLAIN":
+          req_params.add("userPassword")
       let values = db.fetch_user_params(userid, realm, req_params)
       var res: seq[(string,string)] = @[]
       if values.is_none:
         res.add(("res", "none"))
+        if arg_log and not arg_ilog: echo &"Respond with: res=none"
       else:
         res.add(("res", "ok"))
+        if arg_log and not arg_ilog: echo &"Respond with: res=ok"
         for k, v in values.get:
           res.add( (&"param.{k}", v) )
+        for param in req_params:
+          if param == "cmusaslsecretPLAIN":
+            res.add( ("param.cmusaslsecretPLAIN", values.get["userPassword"]) )
       ctx.response.httpCode = Http200
       ctx.response.body = res.encode_params
-      echo &"Respond with: {ctx.response.body}"
+      if arg_ilog: echo &"Respond with: {ctx.response.body}"
     elif req == "store":
       echo &"Store userid={userid} realm={realm}"
       echo &"Respond error"
