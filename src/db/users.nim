@@ -51,6 +51,15 @@ proc create_user*(db: DbConn, local_part, domain, password: string, super_admin:
     VALUES(?, 'userPassword', ?)
   """, user_id, password)
 
+proc fetch_domains*(db: DbConn): seq[string] {.gcsafe.} =
+  let q = """
+    SELECT DISTINCT users.domain
+    FROM users
+  """
+  result = @[]
+  for row in db.rows(sql(q)):
+    result.add(row[0])
+
 proc fetch_user_params*(db: DbConn, local_part, domain: string, params: seq[string]): Option[Table[string,string]] {.gcsafe.} =
   let q = """
     SELECT user_params.name, user_params.value
