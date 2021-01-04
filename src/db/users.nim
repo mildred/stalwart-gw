@@ -14,6 +14,17 @@ type User* = object
   super_admin*: bool
   domain_admin*: bool
 
+type Mailbox* = object
+  discard
+
+type Alias* = object
+  alias*: string
+
+type Domain* = object
+  mailboxes*: Table[string,Mailbox]
+  aliases*: Table[string,Alias]
+  catchall*: string
+
 proc `$`*(email: Email): string =
   &"{email.local_part}@{email.domain}"
 
@@ -51,14 +62,19 @@ proc create_user*(db: DbConn, local_part, domain, password: string, super_admin:
     VALUES(?, 'userPassword', ?)
   """, user_id, password)
 
-proc fetch_domains*(db: DbConn): seq[string] {.gcsafe.} =
+proc fetch_domains*(db: DbConn): Table[string,Domain] {.gcsafe.} =
   let q = """
-    SELECT DISTINCT users.domain
+    SELECT users.domain, users.local_part
     FROM users
   """
-  result = @[]
+  result = initTable[string,Domain]()
   for row in db.rows(sql(q)):
-    result.add(row[0])
+    if not result.contains(row[0]):
+      result[row[0]] = Domain(
+        mailboxes: initTable[string,Mailbox](),
+        aliases:   initTable[string,Alias](),
+        catchall:  "")
+    result[row[0]].mailboxes[row[1]] = Mailbox()
 
 proc fetch_user_params*(db: DbConn, local_part, domain: string, params: seq[string]): Option[Table[string,string]] {.gcsafe.} =
   let q = """
