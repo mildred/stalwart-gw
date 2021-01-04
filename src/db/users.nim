@@ -76,6 +76,16 @@ proc fetch_domains*(db: DbConn): Table[string,Domain] {.gcsafe.} =
         catchall:  "")
     result[row[0]].mailboxes[row[1]] = Mailbox()
 
+proc fetch_credentials*(db: DbConn): Table[string,string] {.gcsafe.} =
+  let q = """
+    SELECT users.local_part || '@' || users.domain, user_params.value
+    FROM users JOIN user_params ON users.id = user_params.user_id
+    WHERE user_params.name = 'userPassword'
+  """
+  result = initTable[string,string]()
+  for row in db.rows(sql(q)):
+    result[row[0]] = row[1]
+
 proc fetch_user_params*(db: DbConn, local_part, domain: string, params: seq[string]): Option[Table[string,string]] {.gcsafe.} =
   let q = """
     SELECT user_params.name, user_params.value

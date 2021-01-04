@@ -91,6 +91,12 @@ proc main(args: Table[string, Value]) =
       ctx.response.body = $(%{
         "domains": %domains
       })
+    elif ctx.request.url.get_path == "/credentials.json":
+      ctx.response.httpCode = Http200
+      let credentials = db.fetch_credentials()
+      ctx.response.body = $(%{
+        "credentials": %credentials
+      })
     else:
       let params = ctx.request.body.read_file().decode_data()
       let userid = params.get_param("userid")
