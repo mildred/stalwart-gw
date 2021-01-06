@@ -20,10 +20,23 @@ func domain*(com: CommonRequest, domain: string, users: seq[User], super_admin: 
           $if user.super_admin {
             <em>(super admin)</em>
           }
+          $if user.num_aliases > 0 {
+            <em>(alias)</em>
+          }
+          $if user.catchall {
+            <em>(catch all)</em>
+          }
+          $else {
+            <form method="POST" action="$(com.prefix)/users/$(user.email)" role="none">
+              <input type="hidden" name="catchall" value="1" />
+              <input type="submit" value="make catch-all" role="link" />
+            </form>
+          }
         </li>
       }
     </ul>
     $(com.form_new_user(super_admin))
+    $(com.form_new_alias())
   """
 
 

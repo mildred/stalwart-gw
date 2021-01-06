@@ -13,17 +13,14 @@ type User* = object
   email*: Email
   super_admin*: bool
   domain_admin*: bool
+  catchall*: bool
+  num_aliases*: int
 
 type Mailbox* = object
   discard
 
 type Alias* = object
   alias*: string
-
-type Domain* = object
-  mailboxes*: Table[string,Mailbox]
-  aliases*: Table[string,Alias]
-  catchall*: string
 
 proc `$`*(email: Email): string =
   &"{email.local_part}@{email.domain}"
@@ -57,24 +54,20 @@ proc create_user*(db: DbConn, local_part, domain, password: string, super_admin:
         WHEN 0 THEN TRUE ELSE FALSE END)
   """, local_part, domain, super_admin.to_sql_bool, auto_admin.to_sql_bool, domain_admin.to_sql_bool, auto_admin.to_sql_bool, local_part)
 
-  db.exec(sql"""
-    INSERT INTO user_params(user_id, name, value)
-    VALUES(?, 'userPassword', ?)
-  """, user_id, password)
+  if password != "":
+    db.exec(sql"""
+      INSERT INTO user_params(user_id, name, value)
+      VALUES(?, 'userPassword', ?)
+    """, user_id, password)
 
-proc fetch_domains*(db: DbConn): Table[string,Domain] {.gcsafe.} =
-  let q = """
-    SELECT users.domain, users.local_part
-    FROM users
-  """
-  result = initTable[string,Domain]()
-  for row in db.rows(sql(q)):
-    if not result.contains(row[0]):
-      result[row[0]] = Domain(
-        mailboxes: initTable[string,Mailbox](),
-        aliases:   initTable[string,Alias](),
-        catchall:  "")
-    result[row[0]].mailboxes[row[1]] = Mailbox()
+proc add_alias*(db: DbConn, user: Email, alias: Email) =
+  db.exec(sql"""
+    INSERT  INTO aliases(user_id, alias_user_id)
+    SELECT  users.id, alias_users.id
+    FROM    users, users AS alias_users
+    WHERE   users.local_part = ? AND users.domain = ? AND
+            alias_users.local_part = ? AND alias_users.domain = ?
+  """, user.local_part, user.domain, alias.local_part, alias.domain)
 
 proc fetch_credentials*(db: DbConn): Table[string,string] {.gcsafe.} =
   let q = """
@@ -106,17 +99,26 @@ proc check_user_password*(db: DbConn, email: Email, password: string): bool {.gc
     WHERE users.local_part = ? AND users.domain = ? AND user_params.name = 'userPassword'
   """, email.local_part, email.domain)
 
-  return (password == db_password)
+  return (db_password != "" and password == db_password)
 
 proc update_user_password*(db: DbConn, email: Email, password: string) {.gcsafe.} =
-  db.exec(sql"""
-    UPDATE  user_params
-    SET     value = ?
-    WHERE   name = 'userPassword' AND
-            user_id IN (
-              SELECT id FROM USERS
-              WHERE local_part = ? AND domain = ?)
-  """, password, email.local_part, email.domain)
+  if password == "":
+    db.exec(sql"""
+      DELETE  FROM user_params
+      WHERE   name = 'userPassword' AND
+              user_id IN (
+                SELECT id FROM USERS
+                WHERE local_part = ? AND domain = ?)
+    """, email.local_part, email.domain)
+  else:
+    db.exec(sql"""
+      UPDATE  user_params
+      SET     value = ?
+      WHERE   name = 'userPassword' AND
+              user_id IN (
+                SELECT id FROM USERS
+                WHERE local_part = ? AND domain = ?)
+    """, password, email.local_part, email.domain)
 
 proc is_admin*(db: DbConn, email: Email, domain: string = ""): bool {.gcsafe.} =
   if domain == "" or email.domain != domain:
@@ -155,24 +157,56 @@ proc fetch_admin_domains*(db: DbConn, email: Email): seq[string] {.gcsafe.} =
     result.add(row[0])
 
 proc fetch_users*(db: DbConn, domain: string = ""): seq[User] {.gcsafe.} =
-  if domain == "":
+  if domain != "":
     let q = sql"""
-      SELECT  users.local_part, users.domain, users.super_admin, users.domain_admin
+      SELECT  users.local_part, users.domain, users.super_admin, users.domain_admin,
+              catchall.user_id IS NOT NULL,
+              COUNT(aliases.id)
       FROM    users
+              LEFT OUTER JOIN catchall ON
+                catchall.user_id == users.id AND catchall.domain == users.domain
+              LEFT OUTER JOIN aliases ON
+                aliases.user_id = users.id
+      WHERE   users.domain = ?
+      GROUP   BY users.local_part, users.domain, users.super_admin, users.domain_admin, catchall.user_id
     """
     result = @[]
     for row in db.rows(q, domain):
       result.add(User(email: Email(local_part: row[0], domain: row[1]),
                       super_admin: row[2] == "1",
-                      domain_admin: row[3] == "1"))
+                      domain_admin: row[3] == "1",
+                      catchall: row[4] == "1",
+                      num_aliases: row[5].parse_int()))
   else:
     let q = sql"""
-      SELECT  users.local_part, users.domain, users.super_admin, users.domain_admin
+      SELECT  users.local_part, users.domain, users.super_admin, users.domain_admin,
+              catchall.user_id IS NOT NULL,
+              COUNT(aliases.id)
       FROM    users
+              LEFT OUTER JOIN catchall ON
+                catchall.user_id == users.id AND catchall.domain == users.domain
+              LEFT OUTER JOIN aliases ON
+                aliases.user_id = users.id
+      GROUP   BY users.local_part, users.domain, users.super_admin, users.domain_admin, catchall.user_id
     """
     result = @[]
     for row in db.rows(q):
       result.add(User(email: Email(local_part: row[0], domain: row[1]),
                       super_admin: row[2] == "1",
-                      domain_admin: row[3] == "1"))
+                      domain_admin: row[3] == "1",
+                      catchall: row[4] == "1",
+                      num_aliases: row[5].parse_int()))
 
+proc fetch_user_aliases*(db: DbConn, user: Email): seq[Email] {.gcsafe.} =
+    let q = sql"""
+      SELECT  alias_users.local_part, alias_users.domain
+      FROM    users
+              JOIN aliases ON
+                aliases.user_id = users.id
+              JOIN users AS alias_users ON
+                aliases.alias_user_id = alias_users.id
+      WHERE   users.local_part = ? AND users.domain = ?
+    """
+    result = @[]
+    for row in db.rows(q, user.local_part, user.domain):
+      result.add(Email(local_part: row[0], domain: row[1]))

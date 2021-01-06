@@ -38,6 +38,24 @@ proc migrate*(db: DbConn): bool =
         )
       """)
       user_version = 2
+    of 2:
+      description = "added aliases and catchall"
+      db.exec(sql"""
+        CREATE TABLE IF NOT EXISTS catchall (
+          id           INTEGER PRIMARY KEY NOT NULL,
+          domain       TEXT NOT NULL,
+          user_id      INTEGER NOT NULL,
+          CONSTRAINT domain_unique UNIQUE (domain)
+        )
+      """)
+      db.exec(sql"""
+        CREATE TABLE IF NOT EXISTS aliases (
+          id            INTEGER PRIMARY KEY NOT NULL,
+          user_id       INTEGER NOT NULL,
+          alias_user_id INTEGER NOT NULL
+        )
+      """)
+      user_version = 3
     else:
       migrating = false
     if migrating:
