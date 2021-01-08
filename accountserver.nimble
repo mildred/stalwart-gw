@@ -17,4 +17,5 @@ requires "zfblast#head"
 requires "https://github.com/mildred/asynctools"
 requires "templates"
 requires "npeg#head"
+requires "base32"
 

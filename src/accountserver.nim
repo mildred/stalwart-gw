@@ -6,6 +6,7 @@ import zfblast
 import tables
 import json
 import base64
+import base32
 import ./utils/parse_port
 import ./utils/lineproto
 import ./db/dbcommon
@@ -102,6 +103,10 @@ proc main(args: Table[string, Value]) =
     val = params.get_params(&"{key}64")
     if val.len > 0:
       return base64.decode(val[0])
+
+    val = params.get_params(&"{key}32")
+    if val.len > 0:
+      return base32.decode(val[0])
 
     return def
 
