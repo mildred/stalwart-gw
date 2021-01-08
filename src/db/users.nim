@@ -69,6 +69,18 @@ proc add_alias*(db: DbConn, user: Email, alias: Email) =
             alias_users.local_part = ? AND alias_users.domain = ?
   """, user.local_part, user.domain, alias.local_part, alias.domain)
 
+proc get_alias*(db: DbConn, user: Email): seq[Email] {.gcsafe.} =
+  let q = """
+    SELECT  alias_users.local_part, alias_users.domain
+    FROM    users
+            JOIN aliases ON aliases.user_id = users.id
+            JOIN users AS alias_users ON aliases.alias_user_id = alias_users.id
+    WHERE   users.local_part = ? AND users.domain = ?
+  """
+  result = @[]
+  for row in db.rows(sql(q), user.local_part, user.domain):
+    result.add(Email(local_part: row[0], domain: row[1]))
+
 proc fetch_credentials*(db: DbConn): Table[string,string] {.gcsafe.} =
   let q = """
     SELECT users.local_part || '@' || users.domain, user_params.value

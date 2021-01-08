@@ -11,6 +11,14 @@ type Domain* = object
   aliases*: Table[string,Alias]
   catchall*: string
 
+proc has_domain*(db: DbConn, domain: string): bool {.gcsafe.} =
+  let q = sql"""
+    SELECT  COUNT(*)
+    FROM    users
+    WHERE   users.domain = ?
+  """
+  return db.get_value(q, domain).parse_int() > 0
+
 proc fetch_domains*(db: DbConn): Table[string,Domain] {.gcsafe.} =
   let q = """
     SELECT  users.domain,

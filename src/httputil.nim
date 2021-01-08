@@ -15,8 +15,8 @@ func decode_data*(data: string): Table[TaintedString, seq[TaintedString]] {.gcsa
   for key, value in cgi.decode_data(data):
     result.mget_or_put(key, @[]).add(value)
 
-func get_param*(params: Table[TaintedString, seq[TaintedString]], key: string): TaintedString {.gcsafe.} =
-  result = ""
+func get_param*(params: Table[TaintedString, seq[TaintedString]], key: string, def: string = ""): TaintedString {.gcsafe.} =
+  result = def
   let list = params.get_or_default(key)
   if len(list) > 0:
     result = list[0]
