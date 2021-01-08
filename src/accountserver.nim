@@ -113,7 +113,7 @@ proc main(args: Table[string, Value]) =
       let realm = params.get_param("realm")
       let raw_req_params = params.get_params("param")
       var req_params: seq[string]
-      echo &"Lookup userid={userid} realm={realm} params={raw_req_params}"
+      echo &"API: Lookup userid={userid} realm={realm} params={raw_req_params}"
       for param in raw_req_params:
         if param == "cmusaslsecretPLAIN":
           req_params.add("userPassword")
@@ -134,12 +134,12 @@ proc main(args: Table[string, Value]) =
         #    res.add( ("param.cmusaslsecretPLAIN", values.get["userPassword"]) )
       result.httpCode = Http200
       result.body = res.encode_params
-      if arg_ilog: echo &"Respond with: {result.body}"
+      if arg_ilog: echo &"API: Respond with: {result.body}"
     elif req == "store":
       let userid = params.get_param("userid")
       let realm = params.get_param("realm")
-      echo &"Store userid={userid} realm={realm}"
-      echo &"Respond error"
+      echo &"API: Store userid={userid} realm={realm}"
+      echo &"API: Respond error"
       result.httpCode = Http500
       result.body = {
         "res": "error",
@@ -150,20 +150,27 @@ proc main(args: Table[string, Value]) =
       let falseStr = params.get_param("false", "false")
       let domain = params.get_param64("domain")
       if db.has_domain(domain):
+        echo &"API: Check domain {domain}: {trueStr}"
         result.body = trueStr
       else:
+        echo &"API: Check domain {domain}: {falseStr}"
         result.body = falseStr
     elif req == "checkauth":
       result.httpCode = Http200
       let trueStr = params.get_param("true", "true")
       let falseStr = params.get_param("false", "false")
-      let user = params.get_param64("user").parse_email()
+      let user = params.get_param64("user")
+      let user_email = user.parse_email()
       let pass = params.get_param64("pass")
-      if user.is_none:
+      if arg_ilog: echo &"API: Check auth user=\"{user}\" pass=\"{pass}\""
+      if user_email.is_none:
+        echo &"API: Check auth user={user}: {falseStr} (failed to decode user)"
         result.body = falseStr
-      elif db.check_user_password(user.get(), pass):
+      elif db.check_user_password(user_email.get(), pass):
+        echo &"API: Check auth user={user}: {trueStr}"
         result.body = trueStr
       else:
+        echo &"API: Check auth user={user}: {falseStr}"
         result.body = falseStr
     elif req == "getalias":
       result.httpCode = Http200
@@ -172,13 +179,15 @@ proc main(args: Table[string, Value]) =
       let localpart = params.get_param64("localpart")
       let alias = db.get_alias(Email(local_part: localpart, domain: domain))
       if alias.len == 0:
+        echo &"API: Get alias {localpart}@{domain}: failed \"{failureStr}\""
         result.body = failureStr
       else:
         for a in alias:
           if result.body.len > 0: result.body.add(",")
           result.body.add($a)
+        echo &"API: Get alias {localpart}@{domain}: success \"{result.body}\""
     else:
-      echo &"Unknown request {req}"
+      echo &"API: Unknown request {req}"
       result.httpCode = Http400
       result.body = {
         "res": "error",
