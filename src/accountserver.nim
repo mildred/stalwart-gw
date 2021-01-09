@@ -6,7 +6,6 @@ import zfblast
 import tables
 import json
 import base64
-import base32
 import ./utils/parse_port
 import ./utils/lineproto
 import ./db/dbcommon
@@ -102,16 +101,69 @@ proc main(args: Table[string, Value]) =
 
     val = params.get_params(&"{key}64")
     if val.len > 0:
-      return base64.decode(val[0])
-
-    val = params.get_params(&"{key}32")
-    if val.len > 0:
-      return base32.decode(val[0])
+      return base64.decode(val[0].replace(" ", "+"))
 
     return def
 
+  proc decode_data_raw(data: string): Table[TaintedString, seq[TaintedString]] {.gcsafe.} =
+    iterator decodeDataRaw(data: string): tuple[key, value: TaintedString] =
+      proc handleHexChar(c: char, x: var int, f: var bool) {.inline.} =
+        case c
+        of '0'..'9': x = (x shl 4) or (ord(c) - ord('0'))
+        of 'a'..'f': x = (x shl 4) or (ord(c) - ord('a') + 10)
+        of 'A'..'F': x = (x shl 4) or (ord(c) - ord('A') + 10)
+        else: f = true
+      proc decodePercent(s: string, i: var int): char =
+        ## Converts `%xx` hexadecimal to the charracter with ordinal number `xx`.
+        ##
+        ## If `xx` is not a valid hexadecimal value, it is left intact: only the
+        ## leading `%` is returned as-is, and `xx` characters will be processed in the
+        ## next step (e.g. in `uri.decodeUrl`) as regular characters.
+        result = '%'
+        if i+2 < s.len:
+          var x = 0
+          var failed = false
+          handleHexChar(s[i+1], x, failed)
+          handleHexChar(s[i+2], x, failed)
+          if not failed:
+            result = chr(x)
+            inc(i, 2)
+      ## Reads and decodes CGI data and yields the (name, value) pairs the
+      ## data consists of.
+      proc parseData(data: string, i: int, field: var string, sep: char): int =
+        result = i
+        while result < data.len:
+          let c = data[result]
+          case c
+          of '%': add(field, decodePercent(data, result))
+          of '+': add(field, ' ')
+          of '&': break
+          else:
+            if c == sep: break
+            add(field, data[result])
+          inc(result)
+
+      var i = 0
+      var name = ""
+      var value = ""
+      # decode everything in one pass:
+      while i < data.len:
+        setLen(name, 0) # reuse memory
+        i = parseData(data, i, name, '=')
+        setLen(value, 0) # reuse memory
+        if i < data.len and data[i] == '=':
+          inc(i) # skip '='
+          i = parseData(data, i, value, '&')
+        yield (name.TaintedString, value.TaintedString)
+        if i < data.len:
+          inc(i)
+
+    result = initTable[TaintedString,seq[TaintedString]]()
+    for key, value in decodeDataRaw(data):
+      result.mget_or_put(key, @[]).add(value)
+
   proc handle_admin_request(request: string): tuple[body: string, httpCode: HttpCode] {.gcsafe.} =
-    let params = request.decode_data()
+    let params = request.decode_data_raw()
     let req = params.get_param("req")
     if req == "lookup":
       let userid = params.get_param("userid")
