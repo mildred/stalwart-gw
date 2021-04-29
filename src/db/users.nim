@@ -81,6 +81,18 @@ proc get_alias*(db: DbConn, user: Email): seq[Email] {.gcsafe.} =
   for row in db.rows(sql(q), user.local_part, user.domain):
     result.add(Email(local_part: row[0], domain: row[1]))
 
+proc get_alias_or_catchall*(db: DbConn, user: Email): seq[Email] {.gcsafe.} =
+  result = get_alias(db, user)
+  if result.len == 0:
+    let q = """
+      SELECT  users.local_part, users.domain
+      FROM    users JOIN catchall ON catchall.user_id = users.id
+      WHERE   catchall.domain = ?
+    """
+    result = @[]
+    for row in db.rows(sql(q), user.domain):
+      result.add(Email(local_part: row[0], domain: row[1]))
+
 proc fetch_credentials*(db: DbConn): Table[string,string] {.gcsafe.} =
   let q = """
     SELECT users.local_part || '@' || users.domain, user_params.value

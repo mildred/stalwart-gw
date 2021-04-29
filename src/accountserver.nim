@@ -234,7 +234,7 @@ proc main(args: Table[string, Value]) =
       let failureStr = params.get_param("failure", "")
       let domain = params.get_param64("domain")
       let localpart = params.get_param64("localpart")
-      let alias = db.get_alias(Email(local_part: localpart, domain: domain))
+      let alias = db.get_alias_or_catchall(Email(local_part: localpart, domain: domain))
       if alias.len == 0:
         echo &"API: Get alias {localpart}@{domain}: failed \"{failureStr}\""
         result.body = failureStr

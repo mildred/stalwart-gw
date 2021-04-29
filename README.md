@@ -12,4 +12,9 @@ The storage is a SQLite database.
 
 **This is a work in progress**
 
+Build
+-----
+
+    nimble c src/accountserver
+
 [sasl2-httpdb]: https://github.com/mildred/sasl2-httpdb
