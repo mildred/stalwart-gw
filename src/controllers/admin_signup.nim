@@ -5,6 +5,7 @@ import ../common
 import ../views/layout_anon
 import ../views/signup
 import ../db/users
+import ../db/op
 
 proc admin_signup*(ctx: HttpContext, com: CommonRequest) {.async gcsafe.} =
   let domain = ctx.request.url.get_query("domain", "")

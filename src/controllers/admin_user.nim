@@ -4,7 +4,7 @@ import ../common
 import ../views/layout_signed
 import ../views/user
 import ../db/users
-import ../db/domains
+import ../db/op
 import ../httputil
 
 proc admin_user*(ctx: HttpContext, com: CommonRequest, user: string) {.async gcsafe.} =

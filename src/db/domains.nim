@@ -1,4 +1,3 @@
-import strformat
 import db_sqlite
 import strutils
 import npeg
@@ -10,6 +9,10 @@ type Domain* = object
   mailboxes*: Table[string,Mailbox]
   aliases*: Table[string,Alias]
   catchall*: string
+
+type DbUpdateDomainCatchallOp* = object
+  domain*: string
+  user*: Email
 
 proc has_domain*(db: DbConn, domain: string): bool {.gcsafe.} =
   let q = sql"""
@@ -49,7 +52,7 @@ proc fetch_domains*(db: DbConn): Table[string,Domain] {.gcsafe.} =
     else:
       result[row[0]].aliases[row[1]] = Alias(alias: row[3])
 
-proc update_domain_catchall*(db: DbConn, domain: string, user: Email) {.gcsafe.} =
+proc update_domain_catchall(db: DbConn, domain: string, user: Email) {.gcsafe.} =
   db.exec(sql"""
     INSERT INTO catchall(domain, user_id)
     SELECT ?, users.id
@@ -59,3 +62,5 @@ proc update_domain_catchall*(db: DbConn, domain: string, user: Email) {.gcsafe.}
     UPDATE SET user_id = EXCLUDED.user_id
   """, domain, user.local_part, user.domain)
 
+proc run*(db: DbConn, op: DbUpdateDomainCatchallOp) {.gcsafe.} =
+  update_domain_catchall(db, op.domain, op.user)

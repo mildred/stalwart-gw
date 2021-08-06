@@ -22,6 +22,23 @@ type Mailbox* = object
 type Alias* = object
   alias*: string
 
+type
+  DbCreateUserOp* = object
+    local_part*: string
+    domain*: string
+    password*: string
+    super_admin*: bool
+    domain_admin*: bool
+    auto_admin*: bool
+
+  DbAddAliasOp* = object
+    user*: Email
+    alias*: Email
+
+  DbUpdateUserPasswordOp* = object
+    email*: Email
+    password*: string
+
 proc `$`*(email: Email): string =
   &"{email.local_part}@{email.domain}"
 
@@ -44,7 +61,7 @@ proc parse_email*(e: string): Option[Email] {.gcsafe.} =
 proc num_users*(db: DbConn): int =
   result = parseInt(db.get_value(sql"SELECT COUNT(*) FROM users;"))
 
-proc create_user*(db: DbConn, local_part, domain, password: string, super_admin: bool = false, domain_admin: bool = false, auto_admin: bool = true) =
+proc create_user(db: DbConn, local_part, domain, password: string, super_admin: bool = false, domain_admin: bool = false, auto_admin: bool = true) =
   let user_id = db.insertId(sql"""
     INSERT INTO users(local_part, domain, super_admin, domain_admin)
     SELECT ?, ?,
@@ -60,7 +77,10 @@ proc create_user*(db: DbConn, local_part, domain, password: string, super_admin:
       VALUES(?, 'userPassword', ?)
     """, user_id, password)
 
-proc add_alias*(db: DbConn, user: Email, alias: Email) =
+proc run*(db: DbConn, op: DbCreateUserOp) =
+  create_user(db, op.local_part, op.domain, op.password, op.super_admin, op.domain_admin, op.auto_admin)
+
+proc add_alias(db: DbConn, user: Email, alias: Email) =
   db.exec(sql"""
     INSERT  INTO aliases(user_id, alias_user_id)
     SELECT  users.id, alias_users.id
@@ -68,6 +88,9 @@ proc add_alias*(db: DbConn, user: Email, alias: Email) =
     WHERE   users.local_part = ? AND users.domain = ? AND
             alias_users.local_part = ? AND alias_users.domain = ?
   """, user.local_part, user.domain, alias.local_part, alias.domain)
+
+proc run*(db: DbConn, op: DbAddAliasOp) =
+  add_alias(db, op.user, op.alias)
 
 proc get_alias*(db: DbConn, user: Email): seq[Email] {.gcsafe.} =
   let q = """
@@ -125,7 +148,7 @@ proc check_user_password*(db: DbConn, email: Email, password: string): bool {.gc
 
   return (db_password != "" and password == db_password)
 
-proc update_user_password*(db: DbConn, email: Email, password: string) {.gcsafe.} =
+proc update_user_password(db: DbConn, email: Email, password: string) {.gcsafe.} =
   if password == "":
     db.exec(sql"""
       DELETE  FROM user_params
@@ -143,6 +166,9 @@ proc update_user_password*(db: DbConn, email: Email, password: string) {.gcsafe.
                 SELECT id FROM USERS
                 WHERE local_part = ? AND domain = ?)
     """, password, email.local_part, email.domain)
+
+proc run*(db: DbConn, op: DbUpdateUserPasswordOp) {.gcsafe.} =
+  update_user_password(db, op.email, op.password)
 
 proc is_admin*(db: DbConn, email: Email, domain: string = ""): bool {.gcsafe.} =
   if domain == "" or email.domain != domain:
