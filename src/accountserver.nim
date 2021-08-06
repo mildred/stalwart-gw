@@ -36,6 +36,8 @@ Options:
   -A, --admin-addr <addr>   Admin interface bind address [default: 127.0.0.1]
   -v, --verbose             Be verbose
   --insecure-logs           Log with user param values (passwords included)
+  --allow-replicate <token> Allow incoming replication with the given token
+  --replicate-to <url>      Replicate operations to the given instance
 
 Note: systemd socket activation is not supported yet
 """) & (when not defined(version): "" else: &"""
@@ -80,7 +82,9 @@ proc main(args: Table[string, Value]) =
       address = $args["--admin-addr"])
     common = Common(
       sessions: sessions,
-      db: db)
+      db: db,
+      replicate_token: $args["--allow-replicate"],
+      replicate_to: split($args["--replicate-to"], ' '))
     sockapi_port = parse_port($args["--sockapi-port"], 7999)
     sockapi_addr = $args["--sockapi-addr"]
 

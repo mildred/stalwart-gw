@@ -26,16 +26,16 @@ proc admin_user*(ctx: HttpContext, com: CommonRequest, user: string) {.async gcs
     let aliases = params.get_params("alias")
 
     if password1 == password2 and email == user:
-      com.db.update_user_password(user_email.get, password1)
+      await com.dbw.update_user_password(user_email.get, password1)
       message.add("Password has been updated. ")
 
     if catchall != "" and user_email.is_some:
-      com.db.update_domain_catchall(user_email.get.domain, user_email.get)
+      await com.dbw.update_domain_catchall(user_email.get.domain, user_email.get)
 
     for alias in aliases:
       let alias_email = alias.parse_email()
       if alias_email.is_some:
-        com.db.add_alias(user_email.get, alias_email.get)
+        await com.dbw.add_alias(user_email.get, alias_email.get)
 
   let super_admin = com.db.is_admin(com.session.data.email)
   let domain_admin = com.db.is_admin(com.session.data.email, user_email.get.domain)

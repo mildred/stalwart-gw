@@ -15,6 +15,7 @@ import ./controllers/admin_domains
 import ./controllers/admin_domain
 import ./controllers/admin_users
 import ./controllers/admin_user
+import ./controllers/admin_replicate
 
 proc handler*(ctx: HttpContext, com: Common) {.async gcsafe.} =
   let cookies = ctx.request.headers.getOrDefault("Cookie").parseCookies()
@@ -26,7 +27,9 @@ proc handler*(ctx: HttpContext, com: Common) {.async gcsafe.} =
   defer:
     await ctx.resp
 
-  if sess == nil and com.db.num_users() == 0:
+  if com.replicate_token != "" and ctx.request.url.get_path == &"{common.prefix}/replicate/{com.replicate_token}" and ctx.request.httpMethod == HttpPost:
+    await admin_replicate(ctx, common)
+  elif sess == nil and com.db.num_users() == 0:
     await admin_signup(ctx, common)
   elif sess == nil:
     await admin_login(ctx, common)

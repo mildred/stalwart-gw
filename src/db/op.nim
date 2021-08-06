@@ -1,4 +1,7 @@
+import asyncdispatch
 import marshal
+import httpclient
+import strformat
 
 import ./dbcommon
 import ./users
@@ -30,19 +33,51 @@ proc parse_operations*(json: string): DbOperations =
 proc to_json*(ops: DbOperations): string =
   $$ops
 
-proc create_user*(db: DbConn, local_part, domain, password: string, super_admin: bool = false, domain_admin: bool = false, auto_admin: bool = true) =
+proc replicate(db: DbWriteHandle, ops: DbOperations) {.async.} =
+  let client = newAsyncHttpClient()
+  let payload = ops.to_json()
+  for replicate_to in db.replicate_to:
+    let res = await client.postContent(replicate_to, payload)
+    echo &"Replicate to {replicate_to}: {res}"
+
+proc replicate(db: DbWriteHandle, op: DbOperation) {.async.} =
+  await replicate(db, @[op])
+
+proc run*(db: DbWriteHandle, op: DbOperation, replicate: bool = true) {.async.} =
+  case op.kind
+  of DbUpdateDomainCatchall:
+    run(db.db, op.update_domain_catchall)
+  of DbCreateUser:
+    run(db.db, op.create_user)
+  of DbAddAlias:
+    run(db.db, op.add_alias)
+  of DbUpdateUserPassword:
+    run(db.db, op.update_user_password)
+  if replicate:
+    await replicate(db, op)
+
+proc run*(db: DbWriteHandle, ops: DbOperations) {.async.} =
+  for op in ops:
+    await run(db, op, false)
+  await replicate(db, ops)
+
+proc create_user*(db: DbWriteHandle, local_part, domain, password: string, super_admin: bool = false, domain_admin: bool = false, auto_admin: bool = true) {.async.} =
   let op = DbCreateUserOp(local_part: local_part, domain: domain, password: password, super_admin: super_admin, domain_admin: domain_admin, auto_admin: auto_admin)
-  run(db, op)
+  run(db.db, op)
+  await replicate(db, DbOperation(kind: DbCreateUser, create_user: op))
 
-proc add_alias*(db: DbConn, user: Email, alias: Email) =
+proc add_alias*(db: DbWriteHandle, user: Email, alias: Email) {.async.} =
   let op = DbAddAliasOp(user: user, alias: alias)
-  run(db, op)
+  run(db.db, op)
+  await replicate(db, DbOperation(kind: DbAddAlias, add_alias: op))
 
-proc update_user_password*(db: DbConn, email: Email, password: string) {.gcsafe.} =
+proc update_user_password*(db: DbWriteHandle, email: Email, password: string) {.async gcsafe.} =
   let op = DbUpdateUserPasswordOp(email: email, password: password)
-  run(db, op)
+  run(db.db, op)
+  await replicate(db, DbOperation(kind: DbUpdateUserPassword, update_user_password: op))
 
-proc update_domain_catchall*(db: DbConn, domain: string, user: Email) {.gcsafe.} =
+proc update_domain_catchall*(db: DbWriteHandle, domain: string, user: Email) {.async gcsafe.} =
   let op = DbUpdateDomainCatchallOp(domain: domain, user: user)
-  run(db, op)
+  run(db.db, op)
+  await replicate(db, DbOperation(kind: DbUpdateDomainCatchall, update_domain_catchall: op))
 

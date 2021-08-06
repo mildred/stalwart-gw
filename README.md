@@ -12,6 +12,11 @@ The storage is a SQLite database.
 
 **This is a work in progress**
 
+FIXME
+-----
+
+- replication HTTP client does not check CA certificates
+
 Build
 -----
 

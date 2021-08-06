@@ -22,7 +22,7 @@ proc admin_signup*(ctx: HttpContext, com: CommonRequest) {.async gcsafe.} =
     let password2 = params.get_param("password2")
     if password1 == password2 and email.is_some:
       if domain == "" or domain == email.get.domain:
-        com.db.create_user(email.get.local_part, email.get.domain, password1)
+        await com.dbw.create_user(email.get.local_part, email.get.domain, password1)
         ctx.response.httpCode = Http303
         ctx.response.headers.add("Location", &"{com.prefix}/")
         return

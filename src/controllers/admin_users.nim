@@ -28,18 +28,18 @@ proc admin_users*(ctx: HttpContext, com: CommonRequest) {.async gcsafe.} =
       ctx.response.httpCode = Http403
       return
 
-    com.db.create_user(email.get.local_part, email.get.domain, password1,
-                       super_admin = super_admin,
-                       domain_admin = domain_admin,
-                       auto_admin = false)
+    await com.dbw.create_user(email.get.local_part, email.get.domain, password1,
+                        super_admin = super_admin,
+                        domain_admin = domain_admin,
+                        auto_admin = false)
 
     if catchall != "" and email.is_some:
-      com.db.update_domain_catchall(email.get.domain, email.get)
+      await com.dbw.update_domain_catchall(email.get.domain, email.get)
 
     for alias in aliases:
       let alias_email = alias.parse_email()
       if alias_email.is_some:
-        com.db.add_alias(email.get, alias_email.get)
+        await com.dbw.add_alias(email.get, alias_email.get)
 
     ctx.response.httpCode = Http303
     ctx.response.headers.add("Location", &"{com.prefix}/users/{$email.get}")
