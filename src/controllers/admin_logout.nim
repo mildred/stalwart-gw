@@ -1,4 +1,4 @@
-import zfblast
+import zfblast/server
 import cookies
 import times
 import ../session

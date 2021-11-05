@@ -2,7 +2,7 @@ import options
 import strutils, strformat
 import asyncdispatch, net
 import docopt
-import zfblast
+import zfblast/server
 import tables
 import json
 import base64

@@ -1,4 +1,4 @@
-import zfblast
+import zfblast/server
 import ../common
 import ../views/layout_signed
 import ../views/domain

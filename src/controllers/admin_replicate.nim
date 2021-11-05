@@ -1,4 +1,4 @@
-import zfblast
+import zfblast/server
 import marshal
 import ../common
 import ../db/op

@@ -1,7 +1,7 @@
 import httpcore
 import strtabs
 import cookies
-import zfblast
+import zfblast/server
 import strutils
 import ./common
 import ./session

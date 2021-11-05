@@ -1,4 +1,4 @@
-import zfblast
+import zfblast/server
 import options
 import ../httputil
 import ../common
