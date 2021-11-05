@@ -15,6 +15,7 @@ type
     DbCreateUser
     DbAddAlias
     DbUpdateUserPassword
+    DbInsertAllData
 
   DbOperation* = object
     case kind*: DbOperationType
@@ -26,6 +27,8 @@ type
       add_alias*: DbAddAliasOp
     of DbUpdateUserPassword:
       update_user_password*: DbUpdateUserPasswordOp
+    of DbInsertAllData:
+      insert_all_data*: DbInsertAllDataOp
 
 proc parse_operations*(json: string): DbOperations =
   to[DbOperations](json)
@@ -53,6 +56,8 @@ proc run*(db: DbWriteHandle, op: DbOperation, replicate: bool = true) {.async.} 
     run(db.db, op.add_alias)
   of DbUpdateUserPassword:
     run(db.db, op.update_user_password)
+  of DbInsertAllData:
+    run(db.db, op.insert_all_data)
   if replicate:
     await replicate(db, op)
 
@@ -80,4 +85,10 @@ proc update_domain_catchall*(db: DbWriteHandle, domain: string, user: Email) {.a
   let op = DbUpdateDomainCatchallOp(domain: domain, user: user)
   run(db.db, op)
   await replicate(db, DbOperation(kind: DbUpdateDomainCatchall, update_domain_catchall: op))
+
+proc insert_all_data*(db: DbWriteHandle, extract: Extract, only_replicate: bool) {.async gcsafe.} =
+  let op = DbInsertAllDataOp(extract: extract)
+  if not only_replicate:
+    run(db.db, op)
+  await replicate(db, DbOperation(kind: DbInsertAllData, insert_all_data: op))
 

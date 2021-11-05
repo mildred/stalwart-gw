@@ -12,6 +12,7 @@ import ./db/dbcommon
 import ./db/migrations
 import ./db/users
 import ./db/domains
+import ./db/op
 import ./httputil
 import ./admin_routes
 import ./session
@@ -84,9 +85,11 @@ proc main(args: Table[string, Value]) =
       sessions: sessions,
       db: db,
       replicate_token: $args["--allow-replicate"],
-      replicate_to: split($args["--replicate-to"], ' '))
+      replicate_to: if args["--replicate-to"]: split($args["--replicate-to"], ' ') else: @[])
     sockapi_port = parse_port($args["--sockapi-port"], 7999)
     sockapi_addr = $args["--sockapi-addr"]
+
+  asyncCheck common.dbw.insert_all_data(db.extract_all(), only_replicate = true)
 
   var sockapi: AsyncSocket
   sockapi = newAsyncSocket()

@@ -23,6 +23,37 @@ type Alias* = object
   alias*: string
 
 type
+  ExtractUser* = object
+    local_part*: string
+    domain*: string
+    super_admin*: bool
+    domain_admin*: bool
+    created_at*: string
+
+  ExtractAlias* = object
+    src_local_part*: string
+    src_domain*: string
+    alias_local_part*: string
+    alias_domain*: string
+
+  ExtractCatchall* = object
+    domain*: string
+    catchall_local_part*: string
+    catchall_domain*: string
+
+  ExtractParam* = object
+    local_part*: string
+    domain*: string
+    param*: string
+    value*: string
+
+  Extract* = object
+    users*: seq[ExtractUser]
+    params*: seq[ExtractParam]
+    aliases*: seq[ExtractAlias]
+    catchall*: seq[ExtractCatchall]
+
+type
   DbCreateUserOp* = object
     local_part*: string
     domain*: string
@@ -38,6 +69,9 @@ type
   DbUpdateUserPasswordOp* = object
     email*: Email
     password*: string
+
+  DbInsertAllDataOp* = object
+    extract*: Extract
 
 proc `$`*(email: Email): string =
   &"{email.local_part}@{email.domain}"
@@ -248,15 +282,99 @@ proc fetch_users*(db: DbConn, domain: string = ""): seq[User] {.gcsafe.} =
                       num_aliases: row[5].parse_int()))
 
 proc fetch_user_aliases*(db: DbConn, user: Email): seq[Email] {.gcsafe.} =
-    let q = sql"""
-      SELECT  alias_users.local_part, alias_users.domain
-      FROM    users
-              JOIN aliases ON
-                aliases.user_id = users.id
-              JOIN users AS alias_users ON
-                aliases.alias_user_id = alias_users.id
-      WHERE   users.local_part = ? AND users.domain = ?
+  let q = sql"""
+    SELECT  alias_users.local_part, alias_users.domain
+    FROM    users
+            JOIN aliases ON
+              aliases.user_id = users.id
+            JOIN users AS alias_users ON
+              aliases.alias_user_id = alias_users.id
+    WHERE   users.local_part = ? AND users.domain = ?
+  """
+  result = @[]
+  for row in db.rows(q, user.local_part, user.domain):
+    result.add(Email(local_part: row[0], domain: row[1]))
+
+proc extract_all*(db: DbConn): Extract {.gcsafe.} =
+  result = Extract(
+    users: @[],
+    params: @[],
+    aliases: @[],
+    catchall: @[])
+
+  for row in db.rows(sql"""
+    SELECT  users.domain, users.local_part,
+            users.domain_admin, users.super_admin,
+            users.created_at
+    FROM    users
+  """):
+    result.users.add(ExtractUser(domain: row[0], local_part: row[1], domain_admin: row[2] == "1", super_admin: row[3] == "1", created_at: row[4]))
+
+  for row in db.rows(sql"""
+    SELECT  users.domain, users.local_part, user_params.name, user_params.value
+    FROM    user_params JOIN users ON user_params.user_id = users.id
+  """):
+    result.params.add(ExtractParam(domain: row[0], local_part: row[1], param: row[2], value: row[3]))
+
+  for row in db.rows(sql"""
+    SELECT  src.domain, src.local_part, alias.domain, alias.local_part
+    FROM    aliases
+            JOIN users AS src ON aliases.user_id = src.id
+            JOIN users AS alias ON aliases.alias_user_id = alias.id
+  """):
+    result.aliases.add(ExtractAlias(src_domain: row[0], src_local_part: row[1], alias_domain: row[2], alias_local_part: row[3]))
+
+  for row in db.rows(sql"""
+    SELECT  catchall.domain, users.domain, users.local_part
+    FROM    catchall
+            JOIN users ON catchall.user_id = users.id
+  """):
+    result.catchall.add(ExtractCatchall(domain: row[0], catchall_domain: row[1], catchall_local_part: row[2]))
+
+proc insert_all_data(db: DbConn, extract: Extract) {.gcsafe.} =
+  var q: string
+
+  db.exec(sql"BEGIN")
+  db.exec(sql"DELETE FROM users;")
+  db.exec(sql"DELETE FROM user_params;")
+  db.exec(sql"DELETE FROM catchall;")
+  db.exec(sql"DELETE FROM aliases;")
+
+  for user in extract.users:
+    q = """
+      INSERT INTO users (domain, local_part, domain_admin, super_admin, created_at)
+      VALUES (?, ?, ?, ?, ?)
     """
-    result = @[]
-    for row in db.rows(q, user.local_part, user.domain):
-      result.add(Email(local_part: row[0], domain: row[1]))
+    discard db.insertId(sql(q), user.domain, user.local_part, if user.domain_admin: "1" else: "0", if user.super_admin: "1" else: "0", user.created_at)
+
+  for param in extract.params:
+    q = """
+      INSERT INTO user_params (user_id, name, value)
+      SELECT users.id, ?, ?
+      FROM   users
+      WHERE  users.domain = ? AND users.local_part = ?
+    """
+    discard db.insertId(sql(q), param.param, param.value, param.domain, param.local_part)
+
+  for alias in extract.aliases:
+    q = """
+      INSERT INTO aliases (user_id, alias_user_id)
+      SELECT user.id, alias_user.id
+      FROM   users AS user, users AS alias_user
+      WHERE  user.domain = ? AND user.local_part = ? AND alias_user.domain = ? AND alias_user.local_part = ?
+    """
+    discard db.insertId(sql(q), alias.src_domain, alias.src_local_part, alias.alias_domain, alias.alias_local_part)
+
+  for catchall in extract.catchall:
+    q = """
+      INSERT INTO catchall (domain, user_id)
+      SELECT ?, users.id
+      FROM   users
+      WHERE  users.domain = ? AND users.local_part = ?
+    """
+    discard db.insertId(sql(q), catchall.domain, catchall.catchall_domain, catchall.catchall_local_part)
+
+  db.exec(sql"COMMIT")
+
+proc run*(db: DbConn, op: DbInsertAllDataOp) {.gcsafe.} =
+  insert_all_data(db, op.extract)
