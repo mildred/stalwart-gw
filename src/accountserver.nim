@@ -39,6 +39,7 @@ Options:
   --insecure-logs           Log with user param values (passwords included)
   --allow-replicate <token> Allow incoming replication with the given token
   --replicate-to <url>      Replicate operations to the given instance
+  --jwt-secret <secret>     Set JWT secret
 
 Note: systemd socket activation is not supported yet
 """) & (when not defined(version): "" else: &"""
@@ -85,7 +86,8 @@ proc main(args: Table[string, Value]) =
       sessions: sessions,
       db: db,
       replicate_token: $args["--allow-replicate"],
-      replicate_to: if args["--replicate-to"]: split($args["--replicate-to"], ' ') else: @[])
+      replicate_to: if args["--replicate-to"]: split($args["--replicate-to"], ' ') else: @[],
+      jwt_secret: $args["--jwt-secret"])
     sockapi_port = parse_port($args["--sockapi-port"], 7999)
     sockapi_addr = $args["--sockapi-addr"]
 

@@ -6,6 +6,7 @@ type Common* = ref object
   db*: DbConn
   replicate_token*: string
   replicate_to*: seq[string]
+  jwt_secret*: string
 
 type CommonRequest* = ref object
   com*: Common

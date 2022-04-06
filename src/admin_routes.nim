@@ -27,7 +27,9 @@ proc handler*(ctx: HttpContext, com: Common) {.async gcsafe.} =
   defer:
     await ctx.resp
 
-  if com.replicate_token != "" and ctx.request.url.get_path == &"{common.prefix}/replicate/{com.replicate_token}":
+  if ctx.request.url.get_path == &"{common.prefix}/login.jwt":
+    await admin_login_jwt(ctx, common)
+  elif com.replicate_token != "" and ctx.request.url.get_path == &"{common.prefix}/replicate/{com.replicate_token}":
     await admin_replicate(ctx, common)
   elif sess == nil and com.db.num_users() == 0:
     await admin_signup(ctx, common)
