@@ -74,14 +74,6 @@ proc main(args: Table[string, Value]) =
     sessions = newSessionList(defaultSessionTimeout)
     arg_log = args["--verbose"]
     arg_ilog = args["--insecure-logs"]
-    api_server = newZFBlast(
-      trace = arg_log,
-      port = parse_port($args["--api-port"], def = 8000),
-      address = $args["--api-addr"])
-    admin_server = newZFBlast(
-      trace = arg_log,
-      port = parse_port($args["--admin-port"], def = 8080),
-      address = $args["--admin-addr"])
     common = Common(
       sessions: sessions,
       db: db,
@@ -90,6 +82,22 @@ proc main(args: Table[string, Value]) =
       jwt_secret: $args["--jwt-secret"])
     sockapi_port = parse_port($args["--sockapi-port"], 7999)
     sockapi_addr = $args["--sockapi-addr"]
+
+  var
+    admin_servers :seq[ZFBlast] = @[]
+    api_servers :seq[ZFBlast] = @[]
+
+  for addr in ($args["--admin-addr"]).split(","):
+    admin_servers.add(newZFBlast(
+      trace = arg_log,
+      port = parse_port($args["--admin-port"], def = 8080),
+      address = addr))
+
+  for addr in ($args["--api-addr"]).split(","):
+    api_servers.add(newZFBlast(
+        trace = arg_log,
+        port = parse_port($args["--api-port"], def = 8000),
+        address = addr))
 
   asyncCheck common.dbw.insert_all_data(db.extract_all(), only_replicate = true)
 
@@ -100,8 +108,10 @@ proc main(args: Table[string, Value]) =
   sockapi.listen()
 
   echo &"Listening Socket API on {sockapi_addr} port {sockapi_port}"
-  echo &"Listening API on {api_server.address} port {api_server.port}"
-  echo &"Listening admin on {admin_server.address} port {admin_server.port}"
+  for api_server in api_servers:
+    echo &"Listening API on {api_server.address} port {api_server.port}"
+  for admin_server in admin_servers:
+    echo &"Listening admin on {admin_server.address} port {admin_server.port}"
 
   proc get_param64(params: Table[TaintedString, seq[TaintedString]], key: string, def: string = ""): string =
     var val = params.get_params(key)
@@ -319,8 +329,10 @@ proc main(args: Table[string, Value]) =
     except:
       echo getCurrentExceptionMsg()
 
-  asyncCheck api_server.doServe(api_handler)
-  asyncCheck admin_server.doServe(admin_handler)
+  for api_server in api_servers:
+    asyncCheck api_server.doServe(api_handler)
+  for admin_server in admin_servers:
+    asyncCheck admin_server.doServe(admin_handler)
   asyncCheck sockapi_handle(sockapi)
 
   runForever()
