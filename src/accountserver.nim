@@ -317,7 +317,7 @@ proc main(args: Table[string, Value]) =
   proc do_serve(server: AsyncHttpServer, callback: proc (request: asynchttpserver.Request): Future[void] {.closure, gcsafe.}) {.async gcsafe.} =
     while true:
       try:
-        asyncCheck server.acceptRequest(callback)
+        await server.acceptRequest(callback)
       except:
         echo "----------"
         let e = getCurrentException()
