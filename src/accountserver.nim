@@ -2,8 +2,10 @@ import options
 import strutils, strformat
 import asyncdispatch, net
 import docopt
+import asynchttpserver
 import zfblast/server
 import tables
+import nativesockets
 import json
 import base64
 import ./utils/parse_port
@@ -85,7 +87,7 @@ proc main(args: Table[string, Value]) =
 
   var
     admin_servers :seq[ZFBlast] = @[]
-    api_servers :seq[ZFBlast] = @[]
+    api_servers :seq[AsyncHttpServer] = @[]
 
   for addr in ($args["--admin-addr"]).split(","):
     admin_servers.add(newZFBlast(
@@ -94,10 +96,20 @@ proc main(args: Table[string, Value]) =
       address = addr))
 
   for addr in ($args["--api-addr"]).split(","):
-    api_servers.add(newZFBlast(
-        trace = arg_log,
-        port = parse_port($args["--api-port"], def = 8000),
-        address = addr))
+    let server = newAsyncHttpServer()
+    let port = parse_port($args["--api-port"], def = 8000)
+    let ai_list = getAddrInfo(addr, port, AF_UNSPEC)
+    defer: freeAddrInfo(ai_list)
+
+    var ai = ai_list
+    while ai != nil:
+      let addr_str = ai.ai_addr.getAddrString
+      let domain = ai.ai_family.toKnownDomain
+      if domain.is_some:
+        echo &"Listening API on {addr_str} port {port}"
+        server.listen(port, addr_str, domain.get)
+        api_servers.add(server)
+      ai = ai.ai_next
 
   asyncCheck common.dbw.insert_all_data(db.extract_all(), only_replicate = true)
 
@@ -108,8 +120,6 @@ proc main(args: Table[string, Value]) =
   sockapi.listen()
 
   echo &"Listening Socket API on {sockapi_addr} port {sockapi_port}"
-  for api_server in api_servers:
-    echo &"Listening API on {api_server.address} port {api_server.port}"
   for admin_server in admin_servers:
     echo &"Listening admin on {admin_server.address} port {admin_server.port}"
 
@@ -304,29 +314,35 @@ proc main(args: Table[string, Value]) =
     except:
       echo getCurrentExceptionMsg()
 
-  proc api_handler(ctx: HttpContext) {.async gcsafe.} =
-    defer:
-      await ctx.resp
+  proc do_serve(server: AsyncHttpServer, callback: proc (request: asynchttpserver.Request): Future[void] {.closure, gcsafe.}) {.async gcsafe.} =
+    while true:
+      try:
+        asyncCheck server.acceptRequest(callback)
+      except:
+        echo "----------"
+        let e = getCurrentException()
+        echo &"{e.name}: {e.msg}"
+        #echo getStackTrace(e)
+        echo "----------"
 
+  proc api_handler(req: asynchttpserver.Request) {.async gcsafe.} =
     try:
-      if ctx.request.url.get_path == "/domains.json":
-        ctx.response.httpCode = Http200
+      if req.url.path == "/domains.json":
         let domains = db.fetch_domains()
-        ctx.response.body = $(%{
+        await req.respond(Http200, $(%{
           "domains": %domains
-        })
-      elif ctx.request.url.get_path == "/credentials.json":
-        ctx.response.httpCode = Http200
+        }))
+      elif req.url.path == "/credentials.json":
         let credentials = db.fetch_credentials()
-        ctx.response.body = $(%{
+        await req.respond(Http200, $(%{
           "credentials": %credentials
-        })
+        }))
       else:
-        let res = handle_api_request(ctx.request.body.read_file())
-        ctx.response.httpCode = res.httpCode
-        ctx.response.body = res.body
+        let res = handle_api_request(req.body)
+        await req.respond(res.httpCode, res.body)
 
     except:
+      await req.respond(Http500, "Internal Server Error")
       echo getCurrentExceptionMsg()
 
   for api_server in api_servers:
