@@ -22,6 +22,35 @@ Build
 
     nimble c src/accountserver
 
+Services
+--------
+
+Accountserver provide three different services:
+
+### Admin HTTP console
+
+- default address: `127.0.0.1:8080`
+
+Provides a UI to administrate the users. It provides a login form and can be
+made available to the public.
+
+### HTTP API
+
+- default address: `127.0.0.1:8000`
+
+Allows others programs to communicate using HTTP to the accountserver.
+**Warning: this endpoint exposes all users password in clear, secure this
+appropriately. This should not be open to the public.**
+
+### TCP Socket API
+
+- default address: `127.0.0.1:7999`
+
+Allows others program to communicate with the accountserver using plaintext
+TCP socket. **This should not be open to the public.**
+
+Provides a UI to administrate the users
+
 Replication
 -----------
 

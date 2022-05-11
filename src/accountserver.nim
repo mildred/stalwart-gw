@@ -171,7 +171,7 @@ proc main(args: Table[string, Value]) =
     for key, value in decodeDataRaw(data):
       result.mget_or_put(key, @[]).add(value)
 
-  proc handle_admin_request(request: string): tuple[body: string, httpCode: HttpCode] {.gcsafe.} =
+  proc handle_api_request(request: string): tuple[body: string, httpCode: HttpCode] {.gcsafe.} =
     let params = request.decode_data_raw()
     let req = params.get_param("req")
     if req == "lookup":
@@ -269,7 +269,7 @@ proc main(args: Table[string, Value]) =
         return
       var line = rawline
       stripLineEnd(line)
-      let res = handle_admin_request(line)
+      let res = handle_api_request(line)
       if line == rawline:
         await client.send(res.body)
         return
@@ -312,7 +312,7 @@ proc main(args: Table[string, Value]) =
           "credentials": %credentials
         })
       else:
-        let res = handle_admin_request(ctx.request.body.read_file())
+        let res = handle_api_request(ctx.request.body.read_file())
         ctx.response.httpCode = res.httpCode
         ctx.response.body = res.body
 
