@@ -40,8 +40,14 @@ proc replicate(db: DbWriteHandle, ops: DbOperations) {.async.} =
   let client = newAsyncHttpClient()
   let payload = ops.to_json()
   for replicate_to in db.replicate_to:
-    let res = await client.postContent(replicate_to, payload)
-    echo &"Replicate to {replicate_to}: {res}"
+    for op in ops:
+      echo &"Replicate to {replicate_to}: {op.kind}"
+    try:
+      let res = await client.postContent(replicate_to, payload)
+      echo &"Replicate to {replicate_to} ({ops.len} operations): {res}"
+    except:
+      echo &"ERROR: Replicate to {replicate_to} ({ops.len} operations): FAILED {getCurrentExceptionMsg()}"
+
 
 proc replicate(db: DbWriteHandle, op: DbOperation) {.async.} =
   await replicate(db, @[op])
