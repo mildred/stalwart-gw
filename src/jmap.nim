@@ -29,6 +29,7 @@ proc get_jmap_session*(client: Client): Future[JsonNode] {.async.} =
     for account_id in keys(client.jmap_session["accounts"]):
       client.account_id = $account_id
       break
+    echo &"API to {client.api_url} account {client.account_id}"
   result = client.jmap_session
 
 proc account_list*(client: Client): Future[JsonNode] {.async.} =
