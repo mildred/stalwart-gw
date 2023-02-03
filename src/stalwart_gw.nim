@@ -1,5 +1,6 @@
 import options
 import strutils, strformat
+import httpclient
 import asyncdispatch, net
 import docopt
 import asynchttpserver
@@ -10,38 +11,25 @@ import json
 import base64
 import ./utils/parse_port
 import ./utils/lineproto
-import ./db/dbcommon
-import ./db/migrations
-import ./db/users
-import ./db/domains
-import ./db/op
+import ./jmap
 import ./httputil
-import ./admin_routes
-import ./session
-import ./common
 
 const version {.strdefine.}: string = "(no version information)"
 
 const doc = ("""
-AccountServer provides HTTP server to manage accounts
+Stalwart Gateway provides socket API for Stalwart accounts
 
-Usage: accountserver [options]
+Usage: stalwart_gw [options]
 
 Options:
   -h, --help                Print help
+  -v, --verbose             Be verbose
   --version                 Print version
-  -d, --db <file>           Database file [default: accounts.db]
+  --jmap-url <port>         JMAP URL to use
+  --basic-auth-file         File containing USERNAME:PASSWORD without a newline
   --sockapi-port <port>     Socket API port [default: 7999]
   --sockapi-addr <addr>     Socket API bind address [default: 127.0.0.1]
-  -p, --api-port <port>     API port [default: 8000]
-  -a, --api-addr <addr>     API bind address [default: 127.0.0.1]
-  -P, --admin-port <port>   Admin interface port [default: 8080]
-  -A, --admin-addr <addr>   Admin interface bind address [default: 127.0.0.1]
-  -v, --verbose             Be verbose
   --insecure-logs           Log with user param values (passwords included)
-  --allow-replicate <token> Allow incoming replication with the given token
-  --replicate-to <url>      Replicate operations to the given instance
-  --jwt-secret <secret>     Set JWT secret
 
 Note: systemd socket activation is not supported yet
 """) & (when not defined(version): "" else: &"""
@@ -53,7 +41,6 @@ const CRLF = "\c\L"
 
 let
   args = docopt(doc)
-  arg_db = $args["--db"]
 
 if args["--version"]:
   echo version
@@ -63,55 +50,15 @@ if args["--version"]:
     quit(1)
 
 proc main(args: Table[string, Value]) =
-  echo &"Starting up accountserver version {version}..."
-  echo &"Opening database {arg_db}"
-  var db: DbConn = connect(arg_db)
-  defer: db.close()
-
-  if not migrate(db):
-    echo "Invalid database"
-    quit(1)
+  echo &"Starting up stalwart_gw version {version}..."
 
   let
-    sessions = newSessionList(defaultSessionTimeout)
     arg_log = args["--verbose"]
     arg_ilog = args["--insecure-logs"]
-    common = Common(
-      sessions: sessions,
-      db: db,
-      replicate_token: $args["--allow-replicate"],
-      replicate_to: if args["--replicate-to"]: split($args["--replicate-to"], ' ') else: @[],
-      jwt_secret: $args["--jwt-secret"])
+    arg_jmap_url = $args["--jmap-url"]
+    arg_basic_auth_file = $args["--basic-auth-file"]
     sockapi_port = parse_port($args["--sockapi-port"], 7999)
     sockapi_addr = $args["--sockapi-addr"]
-
-  var
-    admin_servers :seq[ZFBlast] = @[]
-    api_servers :seq[AsyncHttpServer] = @[]
-
-  for addr in ($args["--admin-addr"]).split(","):
-    admin_servers.add(newZFBlast(
-      trace = arg_log,
-      port = parse_port($args["--admin-port"], def = 8080),
-      address = addr))
-
-  for addr in ($args["--api-addr"]).split(","):
-    let server = newAsyncHttpServer()
-    let port = parse_port($args["--api-port"], def = 8000)
-    let ai_list = getAddrInfo(addr, port, AF_UNSPEC)
-    defer: freeAddrInfo(ai_list)
-
-    var ai = ai_list
-    while ai != nil:
-      let addr_str = ai.ai_addr.getAddrString
-      let domain = ai.ai_family.toKnownDomain
-      if domain.is_some:
-        echo &"Listening API on {addr_str} port {port}"
-        server.listen(port, addr_str, domain.get)
-        api_servers.add(server)
-      ai = ai.ai_next
-
-  asyncCheck common.dbw.insert_all_data(db.extract_all(), only_replicate = true)
 
   var sockapi: AsyncSocket
   sockapi = newAsyncSocket()
@@ -119,11 +66,12 @@ proc main(args: Table[string, Value]) =
   sockapi.bindAddr(sockapi_port, sockapi_addr)
   sockapi.listen()
 
-  echo &"Listening Socket API on {sockapi_addr} port {sockapi_port}"
-  for admin_server in admin_servers:
-    echo &"Listening admin on {admin_server.address} port {admin_server.port}"
+  let credentials = base64.encode(readFile(arg_basic_auth_file))
+  let client = jmap.newClient(arg_jmap_url, credentials)
 
-  proc get_param64(params: Table[TaintedString, seq[TaintedString]], key: string, def: string = ""): string =
+  echo &"Listening Socket API on {sockapi_addr} port {sockapi_port}"
+
+  proc get_param64(params: Table[string, seq[string]], key: string, def: string = ""): string =
     var val = params.get_params(key)
     if val.len > 0:
       return val[0]
@@ -134,8 +82,8 @@ proc main(args: Table[string, Value]) =
 
     return def
 
-  proc decode_data_raw(data: string): Table[TaintedString, seq[TaintedString]] {.gcsafe.} =
-    iterator decodeDataRaw(data: string): tuple[key, value: TaintedString] =
+  proc decode_data_raw(data: string): Table[string, seq[string]] {.gcsafe.} =
+    iterator decodeDataRaw(data: string): tuple[key, value: string] =
       proc handleHexChar(c: char, x: var int, f: var bool) {.inline.} =
         case c
         of '0'..'9': x = (x shl 4) or (ord(c) - ord('0'))
@@ -183,41 +131,30 @@ proc main(args: Table[string, Value]) =
         if i < data.len and data[i] == '=':
           inc(i) # skip '='
           i = parseData(data, i, value, '&')
-        yield (name.TaintedString, value.TaintedString)
+        yield (name, value)
         if i < data.len:
           inc(i)
 
-    result = initTable[TaintedString,seq[TaintedString]]()
+    result = initTable[string,seq[string]]()
     for key, value in decodeDataRaw(data):
       result.mget_or_put(key, @[]).add(value)
 
-  proc handle_api_request(request: string): tuple[body: string, httpCode: HttpCode] {.gcsafe.} =
+  proc handle_api_request(request: string): Future[tuple[body: string, httpCode: HttpCode]] {.async, gcsafe.} =
     let params = request.decode_data_raw()
     let req = params.get_param("req")
     if req == "lookup":
       let userid = params.get_param("userid")
       let realm = params.get_param("realm")
       let raw_req_params = params.get_params("param")
-      var req_params: seq[string]
       echo &"API: Lookup userid={userid} realm={realm} params={raw_req_params}"
-      for param in raw_req_params:
-        if param == "cmusaslsecretPLAIN":
-          req_params.add("userPassword")
-        else:
-          req_params.add(param)
-      let values = db.fetch_user_params(userid, realm, req_params)
       var res: seq[(string,string)] = @[]
-      if values.is_none:
+      let exists = await client.user_exists(userid, realm)
+      if exists:
         res.add(("res", "none"))
         if arg_log and not arg_ilog: echo &"Respond with: res=none"
       else:
         res.add(("res", "ok"))
         if arg_log and not arg_ilog: echo &"Respond with: res=ok"
-        for k, v in values.get:
-          res.add( (&"param.{k}", v) )
-        #for param in raw_req_params:
-        #  if param == "cmusaslsecretPLAIN":
-        #    res.add( ("param.cmusaslsecretPLAIN", values.get["userPassword"]) )
       result.httpCode = Http200
       result.body = res.encode_params
       if arg_ilog: echo &"API: Respond with: {result.body}"
@@ -235,7 +172,7 @@ proc main(args: Table[string, Value]) =
       let trueStr = params.get_param("true", "true")
       let falseStr = params.get_param("false", "false")
       let domain = params.get_param64("domain")
-      if db.has_domain(domain):
+      if await client.has_domain(domain):
         echo &"API: Check domain {domain}: {trueStr}"
         result.body = trueStr
       else:
@@ -246,13 +183,9 @@ proc main(args: Table[string, Value]) =
       let trueStr = params.get_param("true", "true")
       let falseStr = params.get_param("false", "false")
       let user = params.get_param64("user")
-      let user_email = user.parse_email()
       let pass = params.get_param64("pass")
       if arg_ilog: echo &"API: Check auth user=\"{user}\" pass=\"{pass}\""
-      if user_email.is_none:
-        echo &"API: Check auth user={user}: {falseStr} (failed to decode user)"
-        result.body = falseStr
-      elif db.check_user_password(user_email.get(), pass):
+      if await client.check_user_password(user, pass):
         echo &"API: Check auth user={user}: {trueStr}"
         result.body = trueStr
       else:
@@ -263,7 +196,7 @@ proc main(args: Table[string, Value]) =
       let failureStr = params.get_param("failure", "")
       let domain = params.get_param64("domain")
       let localpart = params.get_param64("localpart")
-      let alias = db.get_alias_or_catchall(Email(local_part: localpart, domain: domain))
+      let alias = await client.get_alias_or_catchall(localpart, domain)
       if alias.len == 0:
         echo &"API: Get alias {localpart}@{domain}: failed \"{failureStr}\""
         result.body = failureStr
@@ -282,14 +215,13 @@ proc main(args: Table[string, Value]) =
   proc sockapi_handle_client(client: AsyncSocket) {.async gcsafe.} =
     defer:
       client.close()
-    var sep = ""
     while true:
       let rawline = await client.recv_line_end()
       if rawline == "":
         return
       var line = rawline
       stripLineEnd(line)
-      let res = handle_api_request(line)
+      let res = await handle_api_request(line)
       if line == rawline:
         await client.send(res.body)
         return
@@ -308,47 +240,6 @@ proc main(args: Table[string, Value]) =
         #echo getStackTrace(e)
         echo "----------"
 
-  proc admin_handler(ctx: HttpContext) {.async gcsafe.} =
-    try:
-      await admin_routes.handler(ctx, common)
-    except:
-      echo getCurrentExceptionMsg()
-
-  proc do_serve(server: AsyncHttpServer, callback: proc (request: asynchttpserver.Request): Future[void] {.closure, gcsafe.}) {.async gcsafe.} =
-    while true:
-      try:
-        await server.acceptRequest(callback)
-      except:
-        echo "----------"
-        let e = getCurrentException()
-        echo &"{e.name}: {e.msg}"
-        #echo getStackTrace(e)
-        echo "----------"
-
-  proc api_handler(req: asynchttpserver.Request) {.async gcsafe.} =
-    try:
-      if req.url.path == "/domains.json":
-        let domains = db.fetch_domains()
-        await req.respond(Http200, $(%{
-          "domains": %domains
-        }))
-      elif req.url.path == "/credentials.json":
-        let credentials = db.fetch_credentials()
-        await req.respond(Http200, $(%{
-          "credentials": %credentials
-        }))
-      else:
-        let res = handle_api_request(req.body)
-        await req.respond(res.httpCode, res.body)
-
-    except:
-      await req.respond(Http500, "Internal Server Error")
-      echo getCurrentExceptionMsg()
-
-  for api_server in api_servers:
-    asyncCheck api_server.doServe(api_handler)
-  for admin_server in admin_servers:
-    asyncCheck admin_server.doServe(admin_handler)
   asyncCheck sockapi_handle(sockapi)
 
   runForever()

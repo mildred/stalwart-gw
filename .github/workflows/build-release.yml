@@ -51,13 +51,13 @@ jobs:
     - name: Build
       run: |
         nimble install -d -y
-        nimble c -d:ssl -d:version=$(git describe --always) src/accountserver
+        nimble c -d:ssl -d:version=$(git describe --always) src/stalwart_gw
 
     - name: package
       run: |
         mkdir dist
-        cp src/accountserver dist/accountserver-${{ steps.vars.outputs.release_name }}
-        tar Jcf dist/accountserver-${{ steps.vars.outputs.release_name }}.tar.xz -C src accountserver
+        cp src/stalwart_gw dist/stalwart_gw-${{ steps.vars.outputs.release_name }}
+        tar Jcf dist/stalwart_gw-${{ steps.vars.outputs.release_name }}.tar.xz -C src stalwart_gw
 
     # https://github.com/marketplace/actions/create-release
     - name: Release

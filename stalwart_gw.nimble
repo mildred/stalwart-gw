@@ -2,10 +2,10 @@
 
 version       = "0.1.0"
 author        = "Mildred Ki'Lya"
-description   = "Account server with administration interface over HTTP and API interface to use with Cyrus-SASL http auxprop plugin"
+description   = "Gateway interface for Stalwart Accounts API"
 license       = "GPL-3.0"
 srcDir        = "src"
-bin           = @["accountserver"]
+bin           = @["stalwart_gw"]
 
 
 # Dependencies
