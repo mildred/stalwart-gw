@@ -13,9 +13,4 @@ bin           = @["stalwart_gw"]
 requires "nim >= 1.6.0"
 
 requires "docopt"
-requires "zfblast#head"
-requires "https://github.com/mildred/asynctools"
-requires "templates"
-requires "npeg"
-requires "base32"
-requires "jwt"
+requires "zfblast"
