@@ -26,7 +26,7 @@ Options:
   -v, --verbose             Be verbose
   --version                 Print version
   --jmap-url <port>         JMAP URL to use
-  --basic-auth-file         File containing USERNAME:PASSWORD without a newline
+  --basic-auth-file <file>  File containing USERNAME:PASSWORD without a newline
   --sockapi-port <port>     Socket API port [default: 7999]
   --sockapi-addr <addr>     Socket API bind address [default: 127.0.0.1]
   --insecure-logs           Log with user param values (passwords included)
