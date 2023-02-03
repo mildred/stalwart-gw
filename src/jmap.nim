@@ -31,7 +31,7 @@ proc get_jmap_session*(client: Client): Future[JsonNode] {.async.} =
       break
   result = client.jmap_session
 
-proc accounts_list*(client: Client): Future[JsonNode] {.async.} =
+proc account_list*(client: Client): Future[JsonNode] {.async.} =
   discard await client.get_jmap_session()
   let http = newAsyncHttpClient(headers = newHttpHeaders({
     "Authorization": &"Basic {client.credentials}",

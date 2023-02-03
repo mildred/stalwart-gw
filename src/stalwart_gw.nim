@@ -1,4 +1,3 @@
-import options
 import strutils, strformat
 import httpclient
 import asyncdispatch, net
@@ -158,15 +157,10 @@ proc main(args: Table[string, Value]) =
       result.httpCode = Http200
       result.body = res.encode_params
       if arg_ilog: echo &"API: Respond with: {result.body}"
-    elif req == "store":
-      let userid = params.get_param("userid")
-      let realm = params.get_param("realm")
-      echo &"API: Store userid={userid} realm={realm}"
-      echo &"API: Respond error"
-      result.httpCode = Http500
-      result.body = {
-        "res": "error",
-      }.encode_params
+    elif req == "accounts":
+      echo &"API: Accounts"
+      result.httpCode = Http200
+      result.body = $ (await client.account_list())
     elif req == "checkdomain":
       result.httpCode = Http200
       let trueStr = params.get_param("true", "true")
