@@ -40,11 +40,11 @@ jobs:
       id: vars
       run: |
         if [[ "${GITHUB_REF#refs/tags/}" = "${GITHUB_REF#refs/*/}" ]]; then
-          echo ::set-output name=prerelease::false
-          echo ::set-output name=release_name::${GITHUB_REF#refs/*/}
+          echo "prerelease=false" >> $GITHUB_OUTPUT
+          echo "release_name=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
         else
-          echo ::set-output name=prerelease::true
-          echo ::set-output name=release_name::latest-${GITHUB_REF#refs/*/}
+          echo "prerelease=true" >> $GITHUB_OUTPUT
+          echo "release_name=latest-${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
           git push origin +HEAD:refs/tags/latest-${GITHUB_REF#refs/*/}
         fi
 
