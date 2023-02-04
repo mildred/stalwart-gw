@@ -68,6 +68,7 @@ proc get_bound_socket_async*(address: string, port: Port, protocol = IPPROTO_TCP
         raiseOSError(err)
       fdPerDomain[ord(domain)] = lastFd
     result = newAsyncSocket(lastFd, domain, sockType, protocol, buffered)
+    result.setSockOpt(OptReuseAddr, true) # TODO: should this be configurable?
     if bindAddr(result.getFd(), it.ai_addr, it.ai_addrlen.SockLen) == 0'i32:
       success = true
       break

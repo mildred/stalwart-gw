@@ -60,9 +60,10 @@ proc main(args: Table[string, Value]) =
     sockapi_addr = $args["--sockapi-addr"]
 
   var sockapi: AsyncSocket
-  sockapi = newAsyncSocket()
-  sockapi.setSockOpt(OptReuseAddr, true)
-  sockapi.bindAddr(sockapi_port, sockapi_addr)
+  # sockapi = newAsyncSocket()
+  # sockapi.setSockOpt(OptReuseAddr, true)
+  # sockapi.bindAddr(sockapi_port, sockapi_addr)
+  sockapi = get_bound_socket_async(sockapi_addr, sockapi_port)
   sockapi.listen()
 
   let credentials = base64.encode(readFile(arg_basic_auth_file))
