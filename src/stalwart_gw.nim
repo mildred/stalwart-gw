@@ -238,9 +238,7 @@ proc main(args: Table[string, Value]) =
         #echo getStackTrace(e)
         echo "----------"
 
-  asyncCheck sockapi_handle(sockapi)
-
-  runForever()
+  waitFor sockapi_handle(sockapi)
 
 main(args)
 
