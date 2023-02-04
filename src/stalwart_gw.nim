@@ -157,10 +157,14 @@ proc main(args: Table[string, Value]) =
       result.httpCode = Http200
       result.body = res.encode_params
       if arg_ilog: echo &"API: Respond with: {result.body}"
-    elif req == "accounts":
+    elif req == "accounts.json":
       echo &"API: Accounts"
       result.httpCode = Http200
       result.body = $ (await client.account_list())
+    elif req == "domains.json":
+      echo &"API: Domains"
+      result.httpCode = Http200
+      result.body = $ (await client.domain_list())
     elif req == "checkdomain":
       result.httpCode = Http200
       let trueStr = params.get_param("true", "true")
