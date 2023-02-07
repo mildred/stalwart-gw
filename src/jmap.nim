@@ -71,7 +71,7 @@ proc domain_list*(client: Client): Future[JsonNode] {.async.} =
       %[%"Principal/get",%{
         "accountId": %client.account_id,
         "#ids": %{"resultOf": %"s0", "name": %"Principal/query", "path": %"/ids"},
-        "properties": %[%"name", %"description", %"dkim"]
+        "properties": %[%"name", %"description", %"dkim", %"secret"]
       },%"s1"]]
   })
   result = res["methodResponses"][1][1]["list"]
